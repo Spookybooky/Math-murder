@@ -1,0 +1,253 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "Math Murder",
+    LoadingTitle = "Loading...",
+    LoadingSubtitle = "by spooky",
+    ConfigurationSaving = {Enabled = true, FolderName = "MathMurder", FileName = "Settings"}
+})
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local answerGUI = nil
+local lastEquation = ""
+local infWinActive = false
+
+-- ============================================
+-- INF WIN FUNCTIONS
+-- ============================================
+local function infWinMethod1()
+    local winsLeaderboard = workspace:FindFirstChild("WinsLeaderboard")
+    if winsLeaderboard then
+        local guiPart = winsLeaderboard:FindFirstChild("GuiPart")
+        if guiPart then
+            local screenGui = guiPart:FindFirstChild("ScreenGui")
+            if screenGui then
+                local topBar = screenGui:FindFirstChild("TopBar")
+                if topBar then
+                    local aFrame = topBar:FindFirstChild("A")
+                    if aFrame then
+                        local winsValue = aFrame:FindFirstChild("Wins")
+                        if winsValue and winsValue:IsA("IntValue") then
+                            winsValue.Value = 999999
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function infWinMethod2()
+    if LocalPlayer and LocalPlayer:FindFirstChild("leaderstats") then
+        local leaderstats = LocalPlayer.leaderstats
+        local wins = leaderstats:FindFirstChild("Wins")
+        if wins and wins:IsA("IntValue") then
+            wins.Value = 999999
+            return true
+        end
+    end
+    return false
+end
+
+local function activateInfWin()
+    if infWinActive then return end
+    infWinActive = true
+    
+    local success1 = infWinMethod1()
+    local success2 = infWinMethod2()
+    
+    if success1 or success2 then
+        task.spawn(function()
+            while infWinActive do
+                task.wait(1)
+                infWinMethod1()
+                infWinMethod2()
+            end
+        end)
+    else
+        infWinActive = false
+    end
+end
+
+-- ============================================
+-- ПОИСК ПРИМЕРА
+-- ============================================
+local function findEquation()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "SurfaceGui" and obj.Parent and obj.Parent.Name == "Screen" then
+            local mainFrame = obj:FindFirstChild("MainFrame")
+            if mainFrame then
+                for _, child in ipairs(mainFrame:GetDescendants()) do
+                    if child:IsA("TextLabel") then
+                        local text = child.Text
+                        if text:match("%d+%s*[%+%-×x/]%s*%d+") then
+                            if text ~= lastEquation then
+                                print("🔍 Найден пример:", text)
+                                lastEquation = text
+                            end
+                            return text
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- ============================================
+-- РЕШЕНИЕ (с умножением через x и ×)
+-- ============================================
+local function solve(equation)
+    if not equation then return nil end
+    
+    local clean = equation:gsub("[^%d%+%-%*%/x×]", "")
+    clean = clean:gsub("[x×]", "*")
+    
+    local a, op, b = clean:match("(%d+)([%+%-%*/])(%d+)")
+    
+    if a and op and b then
+        a = tonumber(a)
+        b = tonumber(b)
+        
+        if op == "+" then
+            return a + b
+        elseif op == "-" then
+            return a - b
+        elseif op == "*" then
+            return a * b
+        elseif op == "/" then
+            if b ~= 0 then
+                return a / b
+            else
+                return "∞"
+            end
+        end
+    end
+    return nil
+end
+
+-- ============================================
+-- СОЗДАНИЕ ОКНА С ОТВЕТОМ
+-- ============================================
+local function createAnswerGUI()
+    if answerGUI and answerGUI.Parent then
+        answerGUI:Destroy()
+    end
+    
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "MathAnswerDisplay"
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    gui.Enabled = true
+    gui.ResetOnSpawn = false
+    
+    local frame = Instance.new("Frame")
+    frame.Name = "MainFrame"
+    frame.Parent = gui
+    frame.Size = UDim2.new(0, 260, 0, 110)
+    frame.Position = UDim2.new(0.5, -130, 0, 50)
+    frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+    frame.BackgroundTransparency = 0.2
+    frame.BorderSizePixel = 2
+    frame.BorderColor3 = Color3.new(0, 1, 0)
+    frame.Active = true
+    frame.Draggable = true
+    
+    local title = Instance.new("TextLabel")
+    title.Parent = frame
+    title.Size = UDim2.new(1, 0, 0, 20)
+    title.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    title.Text = "🧮 Answers"
+    title.TextColor3 = Color3.new(0, 1, 0)
+    title.Font = Enum.Font.SourceSansBold
+    title.TextSize = 16
+    
+    local eqLabel = Instance.new("TextLabel")
+    eqLabel.Name = "Equation"
+    eqLabel.Parent = frame
+    eqLabel.Size = UDim2.new(1, 0, 0, 30)
+    eqLabel.Position = UDim2.new(0, 0, 0, 22)
+    eqLabel.BackgroundTransparency = 1
+    eqLabel.Text = "---"
+    eqLabel.TextColor3 = Color3.new(1, 1, 0)
+    eqLabel.Font = Enum.Font.SourceSans
+    eqLabel.TextSize = 14
+    
+    local ansLabel = Instance.new("TextLabel")
+    ansLabel.Name = "Answer"
+    ansLabel.Parent = frame
+    ansLabel.Size = UDim2.new(1, 0, 0, 40)
+    ansLabel.Position = UDim2.new(0, 0, 0, 55)
+    ansLabel.BackgroundTransparency = 1
+    ansLabel.Text = "?"
+    ansLabel.TextColor3 = Color3.new(1, 1, 0)
+    ansLabel.Font = Enum.Font.SourceSansBold
+    ansLabel.TextSize = 32
+    
+    answerGUI = gui
+    return gui
+end
+
+-- ============================================
+-- АВТО-ОБНОВЛЕНИЕ ОТВЕТА
+-- ============================================
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        if answerGUI and answerGUI.Enabled then
+            local equation = findEquation()
+            if equation then
+                local answer = solve(equation)
+                local frame = answerGUI:FindFirstChild("MainFrame")
+                if frame then
+                    local eqLabel = frame:FindFirstChild("Equation")
+                    local ansLabel = frame:FindFirstChild("Answer")
+                    if eqLabel then 
+                        eqLabel.Text = equation
+                    end
+                    if ansLabel then
+                        if answer then
+                            ansLabel.Text = tostring(answer)
+                            ansLabel.TextColor3 = Color3.new(0, 1, 0)
+                        else
+                            ansLabel.Text = "?"
+                            ansLabel.TextColor3 = Color3.new(1, 0, 0)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ============================================
+-- МЕНЮ
+-- ============================================
+local MainTab = Window:CreateTab("Main")
+local VisualTab = Window:CreateTab("Visual")
+
+MainTab:CreateButton({
+    Name = "📊 Answers",
+    Callback = function()
+        if not answerGUI then
+            createAnswerGUI()
+        else
+            answerGUI.Enabled = not answerGUI.Enabled
+        end
+    end
+})
+
+VisualTab:CreateButton({
+    Name = "🏆 Inf Win",
+    Callback = function()
+        activateInfWin()
+    end
+})
+
+print("✅ Math Murder loaded")
+print("📊 Answers in Main tab")
+print("🏆 Inf Win in Visual tab")
