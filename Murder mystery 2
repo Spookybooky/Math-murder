@@ -1,0 +1,519 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "MM2 Spooky",
+    LoadingTitle = "Loading...",
+    LoadingSubtitle = "by spooky",
+    ConfigurationSaving = {Enabled = true, FolderName = "MM2Spooky", FileName = "Settings"}
+})
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+-- Storage
+local murderHighlights = {}
+local sheriffHighlights = {}
+local innocentHighlights = {}
+local gunHighlights = {}
+local grabButton = nil
+local grabbingEnabled = false
+local autoGrabEnabled = false
+local killAllActive = false
+
+local settings = {
+    all = false,
+    murderOnly = false,
+    sheriffOnly = false,
+    innocentOnly = false,
+    espGun = false,
+    killAll = false
+}
+
+-- Spawn center and radius
+local spawnCenter = Vector3.new(369.62, 521.93, 4.54)
+local spawnRadius = 100
+
+-- Murderer check
+local function isMurderer(player)
+    if player == LocalPlayer then return false end
+    if not player.Character then return false end
+    
+    local backpack = player:FindFirstChild("Backpack")
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name:lower():find("knife") then
+                return true
+            end
+        end
+    end
+    
+    if player.Character then
+        for _, tool in ipairs(player.Character:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name:lower():find("knife") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Sheriff check
+local function isSheriff(player)
+    if player == LocalPlayer then return false end
+    if not player.Character then return false end
+    
+    local backpack = player:FindFirstChild("Backpack")
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                local name = tool.Name:lower()
+                if name:find("gun") or name:find("revolver") or name:find("pistol") then
+                    return true
+                end
+            end
+        end
+    end
+    
+    if player.Character then
+        for _, tool in ipairs(player.Character:GetChildren()) do
+            if tool:IsA("Tool") then
+                local name = tool.Name:lower()
+                if name:find("gun") then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- Check if player is in spawn zone
+local function isInSpawn(player)
+    if not player.Character then return false end
+    
+    local root = player.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    
+    local dist = (root.Position - spawnCenter).Magnitude
+    return dist < spawnRadius
+end
+
+-- Create Highlight with FULL body fill (no outline)
+local function createHighlight(target, color, inSpawn)
+    if not target then return nil end
+    local old = target:FindFirstChildOfClass("Highlight")
+    if old then old:Destroy() end
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = target
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.FillColor = color
+    highlight.FillTransparency = inSpawn and 0.5 or 0.3
+    highlight.OutlineTransparency = 1  -- no outline
+    highlight.Parent = target
+    return highlight
+end
+
+-- Clear all highlights
+local function clearAllHighlights()
+    for _, h in pairs(murderHighlights) do if h then h:Destroy() end end
+    for _, h in pairs(sheriffHighlights) do if h then h:Destroy() end end
+    for _, h in pairs(innocentHighlights) do if h then h:Destroy() end end
+    for _, h in pairs(gunHighlights) do if h then h:Destroy() end end
+    table.clear(murderHighlights)
+    table.clear(sheriffHighlights)
+    table.clear(innocentHighlights)
+    table.clear(gunHighlights)
+end
+
+-- Find GunDrop
+local function findGunDrop()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "GunDrop" and obj:IsA("BasePart") then
+            return obj
+        end
+    end
+    return nil
+end
+
+-- Update ESP
+local function updateESP()
+    clearAllHighlights()
+    
+    if settings.all or settings.murderOnly or settings.sheriffOnly or settings.innocentOnly then
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local isMurder = isMurderer(p)
+                local isSher = isSheriff(p)
+                local inSpawn = isInSpawn(p)
+                local color
+                
+                if settings.all then
+                    if inSpawn then
+                        color = Color3.new(0.5, 0.5, 0.5)
+                    elseif isMurder then
+                        color = Color3.new(1, 0, 0)
+                    elseif isSher then
+                        color = Color3.new(0, 0, 1)
+                    else
+                        color = Color3.new(0, 1, 0)
+                    end
+                    
+                    local h = createHighlight(p.Character, color, inSpawn)
+                    if h then 
+                        if isMurder then
+                            murderHighlights[p] = h
+                        elseif isSher then
+                            sheriffHighlights[p] = h
+                        else
+                            innocentHighlights[p] = h
+                        end
+                    end
+                end
+                
+                if settings.murderOnly and isMurder then
+                    color = inSpawn and Color3.new(0.5, 0.5, 0.5) or Color3.new(1, 0, 0)
+                    local h = createHighlight(p.Character, color, inSpawn)
+                    if h then murderHighlights[p] = h end
+                end
+                
+                if settings.sheriffOnly and isSher then
+                    color = inSpawn and Color3.new(0.5, 0.5, 0.5) or Color3.new(0, 0, 1)
+                    local h = createHighlight(p.Character, color, inSpawn)
+                    if h then sheriffHighlights[p] = h end
+                end
+                
+                if settings.innocentOnly and not isMurder and not isSher then
+                    color = inSpawn and Color3.new(0.5, 0.5, 0.5) or Color3.new(0, 1, 0)
+                    local h = createHighlight(p.Character, color, inSpawn)
+                    if h then innocentHighlights[p] = h end
+                end
+            end
+        end
+    end
+    
+    if settings.espGun then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name == "GunDrop" and obj:IsA("BasePart") and not gunHighlights[obj] then
+                local h = createHighlight(obj, Color3.new(0, 0, 1), false)
+                if h then gunHighlights[obj] = h end
+            end
+        end
+    end
+end
+
+-- TP to Gun and back
+local function tpToGun()
+    local gun = findGunDrop()
+    if not gun then
+        return
+    end
+    
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+    
+    local root = character.HumanoidRootPart
+    local originalPos = root.CFrame
+    
+    root.CFrame = gun.CFrame * CFrame.new(0, 3, 0)
+    task.wait(0.3)
+    root.CFrame = originalPos
+end
+
+-- Create grab button (persistent)
+local function createGrabButton()
+    if grabButton then
+        grabButton:Destroy()
+        grabButton = nil
+    end
+    
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "GrabButtonGUI"
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    gui.ResetOnSpawn = false  -- THIS MAKES IT PERSIST AFTER DEATH
+    
+    local button = Instance.new("ImageButton")
+    button.Name = "GrabButton"
+    button.Parent = gui
+    button.Size = UDim2.new(0, 60, 0, 60)
+    button.Position = UDim2.new(0.8, -30, 0.8, -30)
+    button.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    button.BackgroundTransparency = 0.3
+    button.BorderSizePixel = 2
+    button.BorderColor3 = Color3.new(1, 1, 0)
+    button.Active = true
+    button.Draggable = true
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.5, 0)
+    corner.Parent = button
+    
+    local text = Instance.new("TextLabel")
+    text.Parent = button
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.Text = "🔫"
+    text.TextColor3 = Color3.new(1, 1, 1)
+    text.TextScaled = true
+    text.Font = Enum.Font.GothamBold
+    
+    button.MouseButton1Click:Connect(tpToGun)
+    
+    grabButton = gui
+end
+
+-- Destroy grab button
+local function destroyGrabButton()
+    if grabButton then
+        grabButton:Destroy()
+        grabButton = nil
+    end
+end
+
+-- Auto grab loop
+local function autoGrabLoop()
+    while autoGrabEnabled do
+        task.wait(0.5)
+        local gun = findGunDrop()
+        if gun then
+            local character = LocalPlayer.Character
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                local root = character.HumanoidRootPart
+                local originalPos = root.CFrame
+                
+                root.CFrame = gun.CFrame * CFrame.new(0, 3, 0)
+                task.wait(0.3)
+                root.CFrame = originalPos
+            end
+        end
+    end
+end
+
+-- Function to equip knife
+local function equipKnife()
+    local character = LocalPlayer.Character
+    if not character then return false end
+    
+    for _, tool in ipairs(character:GetChildren()) do
+        if tool:IsA("Tool") and tool.Name:lower():find("knife") then
+            return true
+        end
+    end
+    
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name:lower():find("knife") then
+                tool.Parent = character
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Kill All (murderer only)
+local function killAll()
+    if not settings.killAll or killAllActive then return end
+    
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+    
+    if not isMurderer(LocalPlayer) then
+        return
+    end
+    
+    killAllActive = true
+    equipKnife()
+    
+    local myRoot = character.HumanoidRootPart
+    local myPos = myRoot.Position
+    
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            if not isInSpawn(p) then
+                local targetRoot = p.Character.HumanoidRootPart
+                local targetPos = targetRoot.Position
+                
+                myRoot.CFrame = CFrame.new(targetPos) * CFrame.new(0, 3, 0)
+                task.wait(0.1)
+            end
+        end
+    end
+    
+    myRoot.CFrame = CFrame.new(myPos) * CFrame.new(0, 3, 0)
+    killAllActive = false
+end
+
+-- Kill Sheriff (teleport near sheriff + auto click)
+local function killSheriff()
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+    
+    -- Find sheriff
+    local sheriff = nil
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and isSheriff(p) then
+            sheriff = p
+            break
+        end
+    end
+    
+    if not sheriff or not sheriff.Character then
+        return
+    end
+    
+    -- Equip knife
+    equipKnife()
+    
+    local myRoot = character.HumanoidRootPart
+    local sheriffRoot = sheriff.Character.HumanoidRootPart
+    local originalPos = myRoot.Position
+    
+    -- Teleport near sheriff (3 units above)
+    myRoot.CFrame = sheriffRoot.CFrame * CFrame.new(0, 5, 0)
+    
+    -- Auto click for 1 second
+    local startTime = tick()
+    while tick() - startTime < 1 do
+        VirtualInputManager:SendMouseButtonEvent(500, 300, 0, true, {}, 0)
+        task.wait(0.01)
+        VirtualInputManager:SendMouseButtonEvent(500, 300, 0, false, {}, 0)
+        task.wait(0.01)
+    end
+    
+    -- Return to original position
+    myRoot.CFrame = CFrame.new(originalPos) * CFrame.new(0, 3, 0)
+end
+
+-- Kill All loop
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if settings.killAll then
+            killAll()
+        end
+    end
+end)
+
+-- ESP update loop
+task.spawn(function()
+    while true do
+        task.wait(1)
+        updateESP()
+    end
+end)
+
+-- Track new players
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function()
+        task.wait(1)
+        updateESP()
+    end)
+end)
+
+-- MENU
+local MainTab = Window:CreateTab("Main")
+local VisualTab = Window:CreateTab("Visual")
+local CombatTab = Window:CreateTab("Combat")
+local GrabTab = Window:CreateTab("Grab")
+
+-- Main tab
+MainTab:CreateButton({
+    Name = "🚀 TP Gun",
+    Callback = tpToGun
+})
+
+-- Visual tab
+VisualTab:CreateToggle({
+    Name = "👤 ESP All",
+    CurrentValue = false,
+    Callback = function(v)
+        settings.all = v
+        updateESP()
+    end
+})
+
+VisualTab:CreateToggle({
+    Name = "🔪 ESP Murder Only",
+    CurrentValue = false,
+    Callback = function(v)
+        settings.murderOnly = v
+        updateESP()
+    end
+})
+
+VisualTab:CreateToggle({
+    Name = "⭐ ESP Sheriff Only",
+    CurrentValue = false,
+    Callback = function(v)
+        settings.sheriffOnly = v
+        updateESP()
+    end
+})
+
+VisualTab:CreateToggle({
+    Name = "👼 ESP Innocent Only",
+    CurrentValue = false,
+    Callback = function(v)
+        settings.innocentOnly = v
+        updateESP()
+    end
+})
+
+VisualTab:CreateToggle({
+    Name = "🔫 ESP Gun",
+    CurrentValue = false,
+    Callback = function(v)
+        settings.espGun = v
+        updateESP()
+    end
+})
+
+-- Combat tab
+CombatTab:CreateToggle({
+    Name = "💀 Kill All",
+    CurrentValue = false,
+    Callback = function(v)
+        settings.killAll = v
+    end
+})
+
+CombatTab:CreateButton({
+    Name = "🔪 Kill Sheriff",
+    Callback = killSheriff
+})
+
+-- Grab tab
+GrabTab:CreateToggle({
+    Name = "🔄 Grab Gun Button",
+    CurrentValue = false,
+    Callback = function(v)
+        grabbingEnabled = v
+        if v then
+            createGrabButton()
+        else
+            destroyGrabButton()
+        end
+    end
+})
+
+GrabTab:CreateToggle({
+    Name = "🤖 Grab Gun Automatically",
+    CurrentValue = false,
+    Callback = function(v)
+        autoGrabEnabled = v
+        if v then
+            task.spawn(autoGrabLoop)
+        end
+    end
+})
